@@ -1,0 +1,14 @@
+Это перевод статьи "IOMMU groups, inside and out" - http://vfio.blogspot.nl/2014/08/iommu-groups-inside-and-out.html
+
+Дата публикации оригинальной статьи - 25.08.2014. С тех пор многое изменилось, но так как статья по большей части теоретическая - кардинальных изменений мало.
+Если что-то есть, о чём я не упомянул, значит я об этом забыл. :(
+
+---
+
+IOMMU группы, внутри и снаружи.
+
+Иногда пользователи VFIO сталкиваются с непониманием причины невозможности разделения устройств между хост-системой и гостевой системой, или между несколькими гостями, являющейся разделением устройств на группы IOMMU(Input/Output Memory Management Unit). В таком случае, пользователи либо используют устаревший способ проброса устройств, либо в случае с многими пользователями VFIO - применяют патч обхода PCIe ACS(Access Control Set) (PCIe ACS override patch) чтобы обойти проблему.  Давайте посмотрим что же на самом деле происходит.
+
+Надеюсь, мы все более-менее знаем что IOMMU делает в системе. Он позволяет отобразить некий виртуальный адрес ввода вывода (I/O virtual address (IOVA)) на физическому адресу в памяти. Без IOMMU, все устройства видят физическую память плоской без какой-либо трансляции. С IOMMU появляется новое адресное пространство, IOVA, которое можно использовать.
+
+Разные IOMMU работают по разному. До зарождения виртуализации, IOMMU чаще всего предоставляли только трансляцию, и часто лишь маленького окна адресного пространства. Большинство подобных IOMMU предоставляли две функции: избавление от bounce buffer'ов и создание протяжённых(contiguous) операций DMA(Direct Memory Access). Bounce buffer'ы нужны когда возможности устройства меньше чем платформы, например когда устройство может адресовать только 4 GB памяти, а платформа поддерживает 8 GB. If the driver allocates a buffer above 4GB, the device cannot directly DMA to it.  A bounce buffer is buffer space in lower memory, where the device can temporarily DMA, which is then copied to the driver allocated buffer on completion.  An IOMMU can avoid the extra buffer and copy operation by providing an IOVA within the device's address space, backed by the driver's buffer that is outside of the device's address space.  Creating contiguous DMA operations comes into play when the driver makes use of multiple buffers, scattered throughout the physical address space, and gathered together for a single I/O operation.  The IOMMU can take these scatter-gather lists and map them into the IOVA space to form a contiguous DMA operation for the device.  In the simplest example, a driver may allocate two 4KB buffers that are not contiguous in the physical memory space.  The IOMMU can allocate a contiguous range for these buffers allowing the I/O device to do a single 8KB DMA rather than two separate 4KB DMAs
